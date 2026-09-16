@@ -1,0 +1,30 @@
+# .graphifyignore — generado por kit-claude. Local, no se versiona.
+# Librerías de terceros, compilados y datos: no son código de este proyecto
+# y multiplican el grafo sin aportar relaciones (medido: ~28 % de los PHP en un repo real).
+vault/
+graphify-out/
+**/vendor/
+**/node_modules/
+assets/libraries/
+assets/vendor/
+**/bower_components/
+**/PHPMailer/
+**/phpmailer/
+**/dompdf*/
+**/tcpdf*/
+**/fpdf*/
+**/PhpSpreadsheet/
+**/phpspreadsheet/
+dist/
+build/
+storage/
+cache/
+uploads/
+Uploads/
+test-results/
+playwright-report/
+coverage/
+*.min.js
+*.min.css
+*.map
+*.lock
