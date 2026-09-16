@@ -50,30 +50,57 @@ Claude cuándo usarlas y cuándo no, y cuándo compactar el contexto.
 
 ### Resultados medidos (16 sep 2026)
 
-Mismas tres preguntas reales sobre un proyecto PHP + MySQL en producción, dos
-veces cada una, con el mismo modelo, en una sesión **sin nada** y otra **con vault + grafo**:
+Se hizo **el mismo trabajo** con cuatro configuraciones de Claude Code: mismo modelo
+(Claude Sonnet), misma aplicación PHP + MySQL en producción, **5 tareas reales × 3
+repeticiones × 4 configuraciones = 60 sesiones**. Un revisor independiente (Claude Opus)
+calificó **a ciegas** el código que escribió cada una, sin saber de qué configuración venía.
 
-| | Sin nada | Con vault + Graphify | Diferencia |
-|---|---|---|---|
-| Tokens consumidos (incluidos subagentes) | 6,49 M | **3,92 M** | **−40 %** |
-| Coste equivalente en la API | 3,14 USD | **2,11 USD** | **−33 %** |
-| Tiempo | 12,5 min | **8,0 min** | **−36 %** |
-| Respuestas correctas | 100 % | 100 % | igual |
+| Configuración | Tokens consumidos | Coste (API) | Tiempo | Calidad del código (juez, sobre 10) |
+|---|---:|---:|---:|---:|
+| **A** · Claude Code sin nada | 4,17 M | 2,08 USD | 10,4 min | 8,2 |
+| **B** · **Este kit** (vault + Graphify) | **2,07 M (−50 %)** | **1,03 USD (−50 %)** | **4,0 min (−61 %)** | **9,5** |
+| **C** · [Ponytail](https://github.com/DietrichGebert/ponytail) | 3,09 M (−26 %) | 1,57 USD (−25 %) | 6,9 min (−34 %) | 8,3 |
+| **D** · Kit + Ponytail | 2,06 M (−51 %) | 0,98 USD (−53 %) | 3,6 min (−65 %) | 8,5 |
 
-Por tipo de pregunta:
+*Valores de una pasada por las 5 tareas (media de las 3 repeticiones). Los porcentajes son
+frente a A.*
 
-| Pregunta | Resultado con vault + grafo |
-|---|---|
-| Entender un flujo entre funciones | **−44 % tokens, −39 % tiempo** |
-| Recuperar una decisión ya documentada | **−56 % tokens, −62 % tiempo** |
-| Buscar dónde se usa algo (un grep lo resuelve) | +56 % tokens → por eso la regla del kit es **no consultarlos en ese caso** |
+### ¿En qué tipo de tarea ahorra cada uno?
 
-**Coste fijo del kit:** ~1.400 tokens más por petición que un Claude recién instalado,
-medido (el ~0,5 % de una petición típica de trabajo real, ~300.000 tokens de contexto).
+Cómo leer la tabla: **−88 %** significa que la misma respuesta correcta costó unas **8 veces
+menos tokens** que Claude sin nada; **+17 %** significa que costó un 17 % **más**.
 
-> **Cuánto fiarse:** muestra pequeña (2 repeticiones por pregunta) y un proyecto con
-> buena documentación. Es una tendencia clara, no una media garantizada. Detalle y
-> limitaciones en la [sección 6](#6-mediciones-completas).
+| Si le pides a Claude… | Ejemplo real de la prueba | Kit | Ponytail | Kit + Ponytail |
+|---|---|---:|---:|---:|
+| **Encontrar dónde se usa algo** | «¿Qué archivos modifican la tabla de clientes?» | ✅ **−88 %** | ✅ −81 % | ✅ −80 % |
+| **Entender cómo funciona algo** (recorre varias funciones) | «¿Quién recibe un aviso y por qué?» | ✅ **−37 %** | ❌ +20 % | ✅ **−43 %** |
+| **Recuperar por qué se hizo algo** (está documentado) | «¿Qué hace falta para registrar una migración?» | ✅ **−51 %** | ⚠️ −29 %, pero respuestas incompletas (78 % de aciertos) | ✅ −34 % |
+| **Un cambio pequeño en un archivo** | «Limita la longitud de dos campos» | ❌ +17 % | ❌ +11 % | ❌ +24 % |
+| **Crear un archivo nuevo siguiendo un patrón** | «Crea un endpoint que cuente clientes, como este otro» | ✅ −29 % | ✅ −23 % | ✅ **−52 %** |
+
+**Qué significa en la práctica:**
+
+- **El kit ahorra sobre todo cuando Claude tendría que leer para entender** el proyecto:
+  entre un 37 % y un 88 % menos. Sin memoria, Claude recorre el código a ciegas, a veces con
+  subagentes que leen decenas de archivos.
+- **Ponytail está pensado para escribir menos código**, no para leer menos. Al leer, su
+  efecto es desigual; al crear el endpoint escribió un 13 % menos de líneas (32 frente a 37).
+- **Juntos consiguen el menor consumo total**, pero la calidad del kit solo fue mayor
+  (9,5 frente a 8,5). La diferencia vino de un detalle: en el cambio de longitudes, las 3
+  sesiones del kit contaron **caracteres** (`mb_strlen`, correcto con tildes y ñ) y la
+  mayoría de las demás contaron **bytes** (`strlen`), que rechaza textos válidos con acentos.
+  Posiblemente influyó que el vault del proyecto documenta un problema previo de acentos
+  (sin verificar).
+- **En cambios pequeños y localizados ninguno ahorra** (+11 % a +24 %): hay poco que leer y
+  pesa más el coste fijo de las reglas.
+
+**Coste fijo del kit:** +1.404 tokens por petición frente a un Claude Code recién instalado
+(el ~0,5 % de una petición típica de una jornada real, de ~300.000 tokens de contexto).
+
+> **Cuánto fiarse:** 3 repeticiones por tarea en un solo proyecto, con buena
+> documentación. Las diferencias grandes (−50 % en total, −88 % al buscar) son consistentes
+> entre repeticiones; las pequeñas (±20 %) pueden ser variación. Detalle completo, rangos e
+> historial de mediciones en la [sección 6](#6-mediciones-completas).
 
 ### Qué incluye
 
@@ -435,39 +462,150 @@ Día siguiente: sesión nueva + bitácora, en lugar de `claude --continue` sobre
 
 ## 6. Mediciones completas
 
-Todas del 16 sep 2026 con la API de Anthropic (tokens de entrada, incluidos los
-subagentes, y coste equivalente de la API).
+Todas del 16 sep 2026 con la API de Anthropic: tokens de entrada **incluidos los
+subagentes** (`modelUsage` de `claude -p --output-format json`; el campo `usage` solo cuenta
+la sesión principal y engaña) y coste equivalente de la API.
 
-### Experimento: sin nada frente a vault + Graphify
+### Experimento 2: sin nada · kit · Ponytail · kit + Ponytail
 
-- **Proyecto:** aplicación web PHP + MySQL en producción (~25.800 nodos de grafo, vault de 290 notas).
-- **Sesiones:** copia limpia del repo sin reglas, skills ni plugins de usuario
-  (`--setting-sources project --strict-mcp-config`, `claudeMdExcludes`). A = sin nada;
-  B = mismo repo + `vault/` + grafo recién construido + una nota de 5 líneas que dice que
-  existen. Mismo modelo (Sonnet), mismas herramientas de solo lectura.
-- **3 preguntas × 2 repeticiones × 2 sesiones = 12 corridas.** Calidad comprobada contra la
-  verdad extraída del código.
+**Montaje**
 
-| Pregunta | Sin nada | Con vault + Graphify |
-|---|---|---|
-| T1 · ¿Qué archivos escriben en la tabla de clientes? | 228 k tok · 0,14 USD · 39 s | 356 k · 0,21 USD · 62 s |
-| T2 · ¿Cómo se decide quién recibe un aviso? | 2.366 k tok · 1,03 USD · 218 s | 1.315 k · 0,65 USD · 134 s |
-| T3 · ¿Qué hace falta para que una migración quede registrada? | 650 k tok · 0,41 USD · 118 s | 287 k · 0,19 USD · 45 s |
-| **Total** | **6,49 M · 3,14 USD · 12,5 min** | **3,92 M · 2,11 USD · 8,0 min** |
-| Aciertos | 12/12 archivos · 5/5 · 6/6 | 12/12 · 5/5 · 6/6 |
+- **Proyecto:** aplicación web PHP + MySQL en producción (~25.800 nodos de grafo, vault de
+  290 notas con índice).
+- **Aislamiento:** cada sesión en una copia limpia del repositorio, sin reglas, skills,
+  plugins ni memoria del usuario (`--setting-sources project --strict-mcp-config`,
+  `claudeMdExcludes`, `skillOverrides: off`, `autoMemoryEnabled: false`). Mismo modelo
+  (Sonnet), mismas herramientas.
+- **Configuraciones:** A sin nada · B reglas del kit + `vault/` con índice + grafo recién
+  construido + skills del kit · C Ponytail 4.10.0 (commit `e3ba2aa`) cargado con
+  `--plugin-dir`, con su activación verificada · D = B + C.
+- **Tareas:** 3 de análisis (T1 buscar escrituras en una tabla, T2 entender el flujo de
+  avisos, T3 recuperar cómo se registra una migración) y 2 de implementación (I1 limitar la
+  longitud de dos campos en un guardado existente, I2 crear un endpoint siguiendo un patrón).
+- **Calidad:** en análisis, comprobación contra la verdad extraída del código; en
+  implementación, `php -l` (24/24 correctos) y juez Opus a ciegas (IDs aleatorios).
+- **Independencia:** tras cada implementación se restauraron la copia y el vault.
 
-**Limitaciones:** 2 repeticiones con mucha variación (la misma pregunta dio 204 k y 509 k);
-un solo proyecto, con buena documentación (en un repo donde casi todo son librerías de
-terceros el grafo aporta menos); solo preguntas de análisis, no de implementación.
+**Resultados por tarea** (media de 3 repeticiones; entre paréntesis, mínimo–máximo de tokens)
+
+| Tarea | Config. | Tokens | Coste | Tiempo | Turnos | Calidad | Líneas escritas |
+|---|---|---:|---:|---:|---:|---:|---:|
+| T1 buscar | A | 1.180 k (308–2.219) | 0,61 USD | 196 s | 4 | 100 % | — |
+| | B | **145 k** (98–204) | **0,07** | **29 s** | 4 | 100 % | — |
+| | C | 225 k (104–396) | 0,13 | 50 s | 13 | 100 % | — |
+| | D | 232 k (178–294) | 0,10 | 29 s | 7 | 100 % | — |
+| T2 entender | A | 1.276 k (964–1.777) | 0,66 | 189 s | 1 | 100 % | — |
+| | B | 798 k (446–1.132) | 0,37 | 89 s | 15 | 100 % | — |
+| | C | 1.533 k (1.098–2.298) | 0,73 | 190 s | 1 | 100 % | — |
+| | D | **723 k** (691–775) | **0,31** | **79 s** | 16 | 100 % | — |
+| T3 recuperar | A | 772 k (425–1.177) | 0,41 | 158 s | 2 | 94 % | — |
+| | B | **376 k** (298–475) | **0,23** | **51 s** | 11 | 100 % | — |
+| | C | 548 k (378–861) | 0,36 | 98 s | 5 | 78 % | — |
+| | D | 510 k (375–639) | 0,27 | 55 s | 15 | 100 % | — |
+| I1 cambio pequeño | A | **184 k** (148–235) | **0,09** | **18 s** | 5 | juez 7,0 | 16 |
+| | B | 216 k (173–261) | 0,10 | 21 s | 6 | **juez 9,0** | 17 |
+| | C | 204 k (178–254) | 0,09 | 18 s | 6 | juez 7,7 | 16 |
+| | D | 229 k (200–270) | 0,12 | 19 s | 6 | juez 7,7 | 16 |
+| I2 archivo nuevo | A | 758 k (577–883) | 0,32 | 60 s | 15 | juez 9,3 | 37 |
+| | B | 537 k (447–628) | 0,25 | 52 s | 11 | **juez 10,0** | 36 |
+| | C | 581 k (458–732) | 0,26 | 56 s | 12 | juez 9,0 | **32** |
+| | D | **361 k** (315–402) | **0,19** | **33 s** | 9 | juez 9,3 | 34 |
+
+**Por bloque** (una pasada; frente a A)
+
+| Config. | Análisis (T1–T3) | Implementación (I1–I2) | Juez medio |
+|---|---|---|---:|
+| A | 3,23 M · 1,68 USD · 9,1 min | 0,94 M · 0,41 USD · 1,3 min | 8,2 |
+| B | 1,32 M (**−59 %**) · 0,68 USD · 2,8 min | 0,75 M (−20 %) · 0,35 USD · 1,2 min | **9,5** |
+| C | 2,31 M (−29 %) · 1,22 USD · 5,6 min | 0,79 M (−17 %) · 0,34 USD · 1,2 min | 8,3 |
+| D | 1,47 M (−55 %) · 0,68 USD · 2,7 min | **0,59 M (−37 %)** · 0,30 USD · 0,9 min | 8,5 |
+
+**Qué vio el juez:** en I2 los 12 endpoints fueron correctos y seguros (guardia de sesión,
+control de acceso, consulta preparada); solo variaron detalles como el código de error. En
+I1, 7 de 12 contaron bytes (`strlen`) en lugar de caracteres, lo que rechaza textos válidos
+con tildes: B 0 de 3, A 3 de 3, C 2 de 3 y D 2 de 3.
+
+**Limitaciones:** un solo proyecto, bien documentado; 3 repeticiones con variación alta en
+A (T1 osciló entre 308 k y 2,2 M según lanzara o no subagentes); tareas de análisis y cambios
+pequeños, no desarrollos largos. Ponytail anuncia su mayor efecto en tareas donde el agente
+tiende a construir de más, que aquí no se probaron.
+
+### Experimento 1 (previo): sin nada frente a vault + Graphify
+
+3 tareas de análisis × 2 repeticiones, con una nota de 5 líneas en lugar de las reglas del kit.
+Resultado: **−40 % de tokens, −33 % de coste y −36 % de tiempo**, con la misma calidad. La
+búsqueda simple salió **+56 %**, lo que llevó a la regla «si un grep lo resuelve, no uses
+vault ni grafo». En el experimento 2, con esa regla, esa misma tarea pasó a **−88 %**.
 
 ### Carga fija frente a un Claude recién instalado
 
 | Configuración (sesión vacía) | Tokens por petición | Diferencia |
-|---|---|---|
-| Claude recién instalado | 29.178 | — |
-| **Este kit (v2)** | 30.582 | **+1.404** |
-| Kit de reglas completas (v1, descartado) | — | +2.777 fijos y hasta +18.000 en tareas |
-| Primer diseño (todo cargado siempre) | — | +15.200 |
+|---|---:|---:|
+| Claude Code recién instalado | 29.178 | — |
+| **Kit v2 (este)** | 30.582 | **+1.404** |
+| Kit v1: reglas completas bajo demanda | — | +2.777 fijos, hasta +18.000 durante una tarea |
+| Primer diseño: todo cargado siempre | — | +15.200 |
+
+### Historial de mediciones en un equipo de trabajo real
+
+Mediciones sobre la instalación de un desarrollador a jornada completa, con 4 proyectos
+PHP + MySQL (anonimizados).
+
+**1. Consumo diario real** (transcripciones de Claude Code, peticiones al modelo)
+
+| Día | Peticiones | De subagentes | Contexto leído de caché | Contexto medio por petición |
+|---|---:|---:|---:|---:|
+| 8 sep | 2.193 | 0 | 1.162 M | 533 k |
+| 10 sep | 3.863 | 2.064 | 1.565 M | 409 k |
+| 11 sep | 5.826 | 2.467 | 1.630 M | 286 k |
+| 14 sep | 5.115 | 707 | 1.545 M | 307 k |
+| 15 sep | 3.706 | 623 | 1.308 M | 356 k |
+| 16 sep¹ | 2.395 | 357 | 908 M | 383 k |
+
+¹ Incluye las sesiones de estas mediciones.
+
+La lección: **cada petición arrastra de media 300.000–530.000 tokens de contexto**. En
+jornadas largas, lo que más consume no son las reglas sino la conversación acumulada; de ahí
+las reglas de la sección 5.
+
+**2. Coste de cada extensión** (tokens fijos en cada petición)
+
+| Extensión | Coste fijo | Otros efectos | Decisión |
+|---|---:|---|---|
+| Superpowers (14 skills) | ~690 (`claude plugin details`) + ~900 estimados del texto que inyecta al iniciar | Instrucciones que chocaban con el flujo propio | Apagado |
+| `CLAUDE.md` personal completo (29,8 KB) | ~13.500 (estimado a 2,2 caracteres/token, ratio medido en español) | — | Pasado a carga bajo demanda |
+| Skill ui-ux-pro-max (descripción de 822 caracteres) | ~370 (estimado) | El instalador añade 6 skills más, una choca con una integrada | Solo nombre |
+| Skill clean-code-guard (descripción de 953 caracteres) | ~430 (estimado) | — | Solo nombre |
+| frontend-design | ~80 | — | — |
+| context7, warp | ~0 | context7: herramientas diferidas | — |
+| security-guidance | ~0 | Lanza varios revisores en paralelo en cada commit (~2,5 GB de RAM) | Revisiones desactivadas |
+| Hookify | 0 tokens | ~220 ms en **cada** llamada a herramienta, aunque no tenga reglas | No se usa |
+| Índice de memoria (`MEMORY.md`, 13,2 KB) | ~5.400 (medido) | — | Reducido a 7,1 KB |
+| MCP de LightRAG en 3 proyectos | Herramientas en cada sesión | Índice vacío: el equipo no podía indexar | Retirado |
+
+**3. Evolución de la configuración** (tokens de entrada de una sesión vacía, medidos con la API)
+
+Cambios medidos juntos en la columna central: `CLAUDE.md` bajo demanda, Superpowers apagado y
+skills de terceros solo con nombre (−13.926 tokens por petición).
+
+| Dónde | Inicio | Tras esos cambios | + instrucciones de proyecto bajo demanda | Ahorro |
+|---|---:|---:|---:|---:|
+| Carpeta neutra | 51.170 | 37.244 | — | **−27 %** |
+| Carpeta personal (con memoria) | 56.568 | 42.645 | 39.914 | **−29 %** |
+| Proyecto 1 (instrucciones de 27,5 KB) | ~63.650 | 49.728 | 40.093 | **−37 %** |
+| Proyecto 2 | ~56.300 | 42.385 | 40.506 | −28 % |
+| Proyecto 3 | ~54.000 | 40.117 | 39.033 | −28 % |
+| Proyecto 4 | ~53.600 | 39.640 | 38.494 | −28 % |
+
+Las cifras con «~» se obtienen sumando al valor medido el ahorro global medido (13.926 tokens).
+
+**4. Evolución del kit**
+
+| Versión | Qué cargaba | Coste fijo por petición |
+|---|---|---:|
+| Primer diseño | Todas las reglas de ingeniería siempre | +15.200 |
+| v1 | Núcleo + reglas por tipo de archivo + skills por fase | +2.777 (hasta +18.000 durante una tarea) |
+| **v2 (actual)** | Solo ahorro: reglas de lectura + vault + grafo + compactación | **+1.404** |
 
 ---
 

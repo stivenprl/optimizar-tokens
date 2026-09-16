@@ -11,28 +11,97 @@ Se instala entregándole **un solo archivo** a Claude Code:
 
 ## Resultados medidos
 
-Mismas tres preguntas reales sobre una aplicación PHP + MySQL en producción, dos veces cada
-una, con el mismo modelo (Claude Sonnet), en una sesión **sin nada** y otra **con vault +
-Graphify**:
+**El mismo trabajo, cuatro configuraciones.** Mismo modelo (Claude Sonnet), misma aplicación
+PHP + MySQL en producción, **5 tareas reales × 3 repeticiones × 4 configuraciones = 60
+sesiones**. Un revisor independiente (Claude Opus) calificó **a ciegas** el código escrito.
 
-| | Sin nada | Con vault + Graphify | Diferencia |
+| Configuración | Tokens | Coste (API) | Tiempo | Calidad del código (juez /10) |
+|---|---:|---:|---:|---:|
+| **A** · Claude Code sin nada | 4,17 M | 2,08 USD | 10,4 min | 8,2 |
+| **B** · **Este kit** (vault + Graphify) | **2,07 M (−50 %)** | **1,03 USD (−50 %)** | **4,0 min (−61 %)** | **9,5** |
+| **C** · [Ponytail](https://github.com/DietrichGebert/ponytail) | 3,09 M (−26 %) | 1,57 USD (−25 %) | 6,9 min (−34 %) | 8,3 |
+| **D** · Kit + Ponytail | 2,06 M (−51 %) | 0,98 USD (−53 %) | 3,6 min (−65 %) | 8,5 |
+
+<sub>Una pasada por las 5 tareas, media de 3 repeticiones. Porcentajes frente a A. Tokens
+incluyendo subagentes.</sub>
+
+### ¿En qué tipo de tarea ahorra cada uno?
+
+Cómo leerlo: **−88 %** = la misma respuesta correcta costó unas **8 veces menos tokens** que
+Claude sin nada. **+17 %** = costó un 17 % **más**.
+
+| Si le pides a Claude… | Ejemplo real de la prueba | Kit | Ponytail | Kit + Ponytail |
+|---|---|---:|---:|---:|
+| **Encontrar dónde se usa algo** | «¿Qué archivos modifican la tabla de clientes?» | ✅ **−88 %** | ✅ −81 % | ✅ −80 % |
+| **Entender cómo funciona algo** | «¿Quién recibe un aviso y por qué?» | ✅ **−37 %** | ❌ +20 % | ✅ **−43 %** |
+| **Recuperar por qué se hizo algo** | «¿Qué hace falta para registrar una migración?» | ✅ **−51 %** | ⚠️ −29 % con respuestas incompletas | ✅ −34 % |
+| **Un cambio pequeño en un archivo** | «Limita la longitud de dos campos» | ❌ +17 % | ❌ +11 % | ❌ +24 % |
+| **Crear un archivo nuevo siguiendo un patrón** | «Crea un endpoint que cuente clientes, como este otro» | ✅ −29 % | ✅ −23 % | ✅ **−52 %** |
+
+**En resumen:**
+
+- **El kit ahorra sobre todo cuando Claude tendría que leer para entender el proyecto**
+  (−37 % a −88 %). Sin memoria, Claude recorre el código a ciegas.
+- **Ponytail está pensado para escribir menos código**, no para leer menos: creando el
+  endpoint escribió un 13 % menos de líneas; leyendo, su efecto fue desigual.
+- **Juntos dan el menor consumo total**, pero **el kit solo tuvo la mejor calidad** (9,5). La
+  diferencia: al limitar longitudes, las 3 sesiones del kit contaron caracteres
+  (`mb_strlen`, correcto con tildes) y casi todas las demás contaron bytes (`strlen`), que
+  rechaza textos válidos con acentos.
+- **En cambios pequeños ninguno ahorra** (+11 % a +24 %): hay poco que leer y pesa el coste fijo.
+
+**Coste fijo del kit:** +1.404 tokens por petición frente a Claude Code recién instalado.
+
+> **Cuánto fiarse:** un solo proyecto bien documentado y 3 repeticiones. Las diferencias
+> grandes son consistentes entre repeticiones; las de ±20 % pueden ser variación.
+> Metodología, rangos y juez en la sección 6 de [`KIT-CLAUDE-CODE.md`](KIT-CLAUDE-CODE.md).
+
+---
+
+## Historial de mediciones
+
+Medido en la instalación real de un desarrollador a jornada completa (4 proyectos PHP +
+MySQL, anonimizados). Detalle completo en la sección 6 del documento.
+
+### Consumo diario real
+
+| Día | Peticiones al modelo | De subagentes | Contexto medio por petición |
 |---|---:|---:|---:|
-| Tokens consumidos (incluidos subagentes) | 6,49 M | **3,92 M** | **−40 %** |
-| Coste equivalente en la API | 3,14 USD | **2,11 USD** | **−33 %** |
-| Tiempo | 12,5 min | **8,0 min** | **−36 %** |
-| Respuestas correctas | 100 % | 100 % | igual |
+| 8 sep | 2.193 | 0 | 533 k |
+| 10 sep | 3.863 | 2.064 | 409 k |
+| 11 sep | 5.826 | 2.467 | 286 k |
+| 14 sep | 5.115 | 707 | 307 k |
+| 15 sep | 3.706 | 623 | 356 k |
 
-| Tipo de pregunta | Con vault + Graphify |
-|---|---|
-| Entender un flujo entre funciones | **−44 % tokens · −39 % tiempo** |
-| Recuperar una decisión ya documentada | **−56 % tokens · −62 % tiempo** |
-| Buscar dónde se usa algo (lo resuelve un grep) | +56 % tokens → **el kit ordena no usarlos en ese caso** |
+**Cada petición arrastra 300.000–530.000 tokens de contexto.** En jornadas largas lo que más
+gasta es la conversación acumulada, no las reglas: por eso importan `/compact`, `/clear` y el vault.
 
-**Coste fijo del kit:** +1.404 tokens por petición frente a un Claude Code recién instalado.
+### Lo que costaba cada extensión
 
-> Muestra pequeña (2 repeticiones por pregunta, un proyecto bien documentado): tendencia
-> clara, no media garantizada. Metodología y limitaciones completas en la sección 6 del
-> documento.
+| Extensión | Coste | Qué se hizo |
+|---|---|---|
+| Superpowers | ~690 tokens fijos + ~900 estimados al iniciar cada sesión | Apagado |
+| `CLAUDE.md` personal de 29,8 KB | ~13.500 tokens estimados en cada petición | Carga bajo demanda |
+| Índice de memoria de 13,2 KB | ~5.400 tokens medidos en cada petición | Reducido a 7,1 KB |
+| Skills con descripciones largas (ui-ux-pro-max, clean-code-guard) | ~370 y ~430 estimados | Solo nombre |
+| security-guidance | 0 tokens, pero varios revisores en cada commit (~2,5 GB de RAM) | Revisiones desactivadas |
+| Hookify | 0 tokens, pero ~220 ms en **cada** llamada a herramienta | No se usa |
+
+### Antes y después (tokens por petición, medidos con la API)
+
+| Dónde | Inicio | Final | Ahorro |
+|---|---:|---:|---:|
+| Carpeta personal | 56.568 | 39.914 | **−29 %** |
+| Proyecto con instrucciones de 27,5 KB | ~63.650 | 40.093 | **−37 %** |
+| Otros 3 proyectos | ~53.600–56.300 | 38.494–40.506 | −28 % |
+
+### Evolución de este kit
+
+| Versión | Qué cargaba | Coste fijo por petición |
+|---|---|---:|
+| Primer diseño | Todas las reglas de ingeniería siempre | +15.200 |
+| v1 | Reglas por tipo de archivo y skills por fase | +2.777 (hasta +18.000 en tareas) |
+| **v2 (actual)** | Solo ahorro: reglas de lectura + vault + grafo + compactación | **+1.404** |
 
 ---
 
